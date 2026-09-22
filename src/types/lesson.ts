@@ -1,0 +1,32 @@
+export interface VocabItem {
+  word: string;
+  pronunciation: string;
+  partOfSpeech: string;
+  meaningMyanmar: string;
+}
+
+export interface GrammarPoint {
+  pattern: string;
+  meaningMyanmar: string;
+  exampleKorean: string;
+  exampleMyanmar: string;
+}
+
+export interface LessonLine {
+  speaker: string;
+  korean: string;
+  myanmar: string;
+}
+
+export interface Lesson {
+  title: string;
+  dialogue: LessonLine[];
+  vocabulary: VocabItem[];
+  grammar: GrammarPoint[];
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctIndex: number;
+}

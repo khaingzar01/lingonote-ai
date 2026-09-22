@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Myanmar:wght@400;500;600;700&display=swap');
+
+html, body {
+  height: 100%;
+  background: #F5F3FC;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', 'Noto Sans Myanmar', sans-serif;
+  color: #231F35;
+}
+
+.mm {
+  font-family: 'Noto Sans Myanmar', 'Inter', sans-serif;
+}
+
+.display {
+  font-family: 'Baloo 2', 'Noto Sans Myanmar', sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
