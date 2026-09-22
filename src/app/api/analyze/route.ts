@@ -28,7 +28,7 @@ Rules:
 - If the photo has no readable Korean text, return dialogue: [], vocabulary: [], grammar: [], and set title to "စာသား မတွေ့ပါ".
 - Respond with raw JSON only, nothing else.`;
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-3.6-flash';
 
 export async function POST(req: NextRequest) {
   try {
