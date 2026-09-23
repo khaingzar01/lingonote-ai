@@ -28,7 +28,7 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> 
 // Phone camera photos can be 4-8MB+, which is bigger than Vercel's ~4.5MB
 // serverless request body limit. Resize/compress in the browser first so
 // the upload always stays well under that limit.
-const MAX_DIMENSION = 1600;
+const MAX_DIMENSION = 1900; // a bit higher so small textbook print stays legible for OCR
 const MAX_BASE64_BYTES = 3.5 * 1024 * 1024; // leave headroom under 4.5MB
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {

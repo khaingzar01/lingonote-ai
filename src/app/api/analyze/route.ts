@@ -32,14 +32,35 @@ Notes on field names (kept the same regardless of language, for compatibility):
 Rules:
 - "myanmar" fields must be natural, fluent Myanmar (Burmese) translations, not literal word-by-word.
 - "speaker" can be "A", "B", or empty string if the text has no dialogue speakers (e.g. a vocabulary list or a single paragraph) — in that case still include each sentence as its own dialogue entry with speaker "".
+- IMPORTANT — completeness: transcribe and translate EVERY sentence/line on the page into "dialogue", in the order they appear, even if there are many (10, 20, or more). Do not skip lines, do not summarize, and do not stop early to save space. If the page has multiple sections (e.g. a dialogue AND a separate word list), include all of them as dialogue entries.
+- "vocabulary" and "grammar" are a curated subset (not everything) — pick the 5-12 most useful words and 1-4 most useful grammar points — but "dialogue" must be the FULL, complete transcription of the page.
 - If the photo has no readable ${languageName} text, return dialogue: [], vocabulary: [], grammar: [], and set title to "စာသား မတွေ့ပါ".
 - Respond with raw JSON only, nothing else.`;
 }
 
 // Try the primary model first; if Google's servers report "high demand" (503),
 // fall back to a lighter model that tends to have more free-tier headroom
-// instead of making the learner wait or fail outright.
-const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+// instead of making the learner wait or fail outright. Kept to 2 candidates
+// (not 3+) so both attempts together stay well inside the function's time
+// limit — a Vercel timeout returns a plain-text page, not JSON, which is
+// worse for the user than a clear "AI is busy" message.
+const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+const PER_ATTEMPT_TIMEOUT_MS = 25_000;
+
+async function callGemini(url: string, payload: unknown): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PER_ATTEMPT_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -73,55 +94,69 @@ export async function POST(req: NextRequest) {
     let geminiRes: Response | null = null;
     let lastErrText = '';
     let lastStatus = 502;
+    let sawOverload = false;
 
-    // Try each model in order; a 503 ("model overloaded / high demand") moves on
-    // to the next one instead of failing the whole request.
+    const payload = {
+      contents: [
+        {
+          parts: [
+            { text: PROMPT },
+            {
+              inline_data: {
+                mime_type: mediaType,
+                data: imageBase64
+              }
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        // A full textbook page (long dialogue + vocab + grammar, in JSON) can
+        // easily need several thousand tokens — a low default limit here was
+        // silently truncating the response, which looked like "incomplete
+        // translation" to the user even though nothing was actually wrong.
+        maxOutputTokens: 8192
+      }
+    };
+
+    // Try each model in order; a 503 ("model overloaded / high demand") or a
+    // per-attempt timeout moves on to the next one instead of failing outright.
     for (const model of GEMINI_MODELS) {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const res = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: PROMPT },
-                {
-                  inline_data: {
-                    mime_type: mediaType,
-                    data: imageBase64
-                  }
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json'
-          }
-        })
-      });
+      try {
+        const res = await callGemini(geminiUrl, payload);
 
-      if (res.ok) {
-        geminiRes = res;
-        break;
+        if (res.ok) {
+          geminiRes = res;
+          break;
+        }
+
+        lastStatus = res.status;
+        lastErrText = await res.text();
+        console.error('Gemini API error', model, res.status, lastErrText);
+
+        if (res.status === 503) {
+          sawOverload = true;
+          continue; // try next model
+        }
+        break; // some other error — no point trying the next model
+      } catch (e: any) {
+        // Aborted due to PER_ATTEMPT_TIMEOUT_MS, or a network hiccup.
+        console.error('Gemini fetch failed', model, e?.message || e);
+        sawOverload = true;
+        lastErrText = e?.message || 'request timed out';
+        continue;
       }
-
-      lastStatus = res.status;
-      lastErrText = await res.text();
-      console.error('Gemini API error', model, res.status, lastErrText);
-
-      // Only keep trying the next model on "overloaded" style errors.
-      if (res.status !== 503) break;
     }
 
     if (!geminiRes) {
       return NextResponse.json(
         {
-          error:
-            lastStatus === 503
-              ? 'AI Server အလွန်လူများနေလို့ ခဏထားပြီး ထပ်စမ်းကြည့်ပါ (ခဏတာပဲ ဖြစ်တတ်ပါတယ်)။'
-              : `Gemini API error (${lastStatus}). ${lastErrText.slice(0, 300)}`
+          error: sawOverload
+            ? 'AI Server အလွန်လူများနေလို့ ခဏထားပြီး ထပ်စမ်းကြည့်ပါ (ခဏတာပဲ ဖြစ်တတ်ပါတယ်)။'
+            : `Gemini API error (${lastStatus}). ${lastErrText.slice(0, 300)}`
         },
         { status: 502 }
       );
