@@ -31,7 +31,8 @@ function mapLessonRow(row: any): SavedLesson {
     title: row.title,
     dialogue: row.dialogue || [],
     vocabulary: row.vocabulary || [],
-    grammar: row.grammar || []
+    grammar: row.grammar || [],
+    language: row.language || 'ko'
   };
 }
 
@@ -57,7 +58,8 @@ export async function saveLesson(lesson: Lesson): Promise<SavedLesson | null> {
       title: lesson.title,
       dialogue: lesson.dialogue,
       vocabulary: lesson.vocabulary,
-      grammar: lesson.grammar
+      grammar: lesson.grammar,
+      language: lesson.language || 'ko'
     })
     .select()
     .single();

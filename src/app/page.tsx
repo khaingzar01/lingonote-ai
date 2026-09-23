@@ -5,8 +5,11 @@ import type { Lesson } from '@/types/lesson';
 import LessonView from '@/components/LessonView';
 import BottomNav from '@/components/BottomNav';
 import { saveLesson, getProgressStats, getTodayGoalProgress } from '@/lib/storage';
+import { LANGUAGES, DEFAULT_LANGUAGE_CODE, getLanguage } from '@/lib/languages';
 
 type Step = 'home' | 'loading' | 'result';
+
+const LANGUAGE_STORAGE_KEY = 'lingonote_language';
 
 function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
@@ -81,6 +84,7 @@ export default function Home() {
     streak: 0
   });
   const [goal, setGoal] = useState({ quizToday: false, studiedToday: false });
+  const [language, setLanguage] = useState(DEFAULT_LANGUAGE_CODE);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +95,24 @@ export default function Home() {
     }
   }, [step]);
 
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      if (saved) setLanguage(saved);
+    } catch {
+      // localStorage unavailable (private mode etc.) — just keep the default.
+    }
+  }, []);
+
+  function selectLanguage(code: string) {
+    setLanguage(code);
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, code);
+    } catch {
+      // ignore
+    }
+  }
+
   async function handleFile(file: File) {
     setError(null);
     setStep('loading');
@@ -100,7 +122,7 @@ export default function Home() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: data, mediaType })
+        body: JSON.stringify({ imageBase64: data, mediaType, language })
       });
 
       const text = await res.text();
@@ -162,13 +184,34 @@ export default function Home() {
 
               {error && <div className="bg-red-50 text-red-600 text-sm rounded-xl p-3">{error}</div>}
 
+              <div className="flex flex-col gap-2">
+                <div className="text-xs font-bold text-gray-400 uppercase">ဘာသာစကား ရွေးပါ</div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {LANGUAGES.map((l) => (
+                    <button
+                      key={l.code}
+                      onClick={() => selectLanguage(l.code)}
+                      className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold border flex items-center gap-1 ${
+                        language === l.code
+                          ? 'bg-primary text-white border-primary'
+                          : 'border-surface2 text-gray-500 bg-white'
+                      }`}
+                    >
+                      <span>{l.flag}</span>
+                      <span>{l.labelMyanmar}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="bg-gradient-to-br from-primaryTint to-white rounded-2xl p-5 border border-surface2 flex flex-col gap-3">
                 <div>
                   <div className="display text-xl font-bold leading-snug">
                     သင်ကျောင်းစာအုပ်ကို သင်ခန်းစာအဖြစ် ပြောင်းလိုက်ပါ
                   </div>
                   <div className="text-gray-500 text-sm mt-1">
-                    စာမျက်နှာတစ်ခုကို ဓာတ်ပုံရိုက်ပါ။ AI က ဖတ်ယူပြီး မြန်မာလို ဘာသာပြန်ပေးပါလိမ့်မယ်။
+                    {getLanguage(language).labelMyanmar} စာမျက်နှာတစ်ခုကို ဓာတ်ပုံရိုက်ပါ။ AI က ဖတ်ယူပြီး
+                    မြန်မာလို ဘာသာပြန်ပေးပါလိမ့်မယ်။
                   </div>
                 </div>
                 <button
@@ -235,9 +278,9 @@ export default function Home() {
               </div>
 
               <div className="text-xs text-gray-400 leading-relaxed bg-surface2 rounded-xl p-3">
-                ℹ️ တင်လိုက်တဲ့ဓာတ်ပုံကို Google Gemini AI ဆီ ပို့ပြီး Korean စာသားကို ဖတ်ယူ/ဘာသာပြန်/vocabulary
-                ခွဲခြမ်းပေးပါလိမ့်မယ် — ရလဒ်က AI ထုတ်ပေးတဲ့ တကယ့်စာသားဖြစ်ပြီး၊ ပုံနှိပ်စာလုံးမပီသတဲ့ဓာတ်ပုံမျိုးမှာ
-                အမှားအယွင်း အနည်းငယ် ဖြစ်နိုင်ပါတယ်။
+                ℹ️ တင်လိုက်တဲ့ဓာတ်ပုံကို Google Gemini AI ဆီ ပို့ပြီး {getLanguage(language).labelMyanmar} စာသားကို
+                ဖတ်ယူ/ဘာသာပြန်/vocabulary ခွဲခြမ်းပေးပါလိမ့်မယ် — ရလဒ်က AI ထုတ်ပေးတဲ့ တကယ့်စာသားဖြစ်ပြီး၊
+                ပုံနှိပ်စာလုံးမပီသတဲ့ဓာတ်ပုံမျိုးမှာ အမှားအယွင်း အနည်းငယ် ဖြစ်နိုင်ပါတယ်။
               </div>
             </div>
             <BottomNav />

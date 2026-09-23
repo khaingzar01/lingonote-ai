@@ -13,6 +13,9 @@ create table if not exists lessons (
   created_at timestamptz not null default now()
 );
 
+-- ဘာသာစကား အများကြီး ထောက်ပံ့ဖို့ ထပ်ထည့်ထားတဲ့ column (ရှိပြီးသား table ဖြစ်ရင်လည်း ဒီတစ်ကြောင်းက အဆင်ပြေအောင် ထည့်ပေးပါလိမ့်မယ်)
+alter table lessons add column if not exists language text not null default 'ko';
+
 create table if not exists quiz_results (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null,
