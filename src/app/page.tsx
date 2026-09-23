@@ -22,6 +22,52 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> 
   });
 }
 
+// Phone camera photos can be 4-8MB+, which is bigger than Vercel's ~4.5MB
+// serverless request body limit. Resize/compress in the browser first so
+// the upload always stays well under that limit.
+const MAX_DIMENSION = 1600;
+const MAX_BASE64_BYTES = 3.5 * 1024 * 1024; // leave headroom under 4.5MB
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+async function compressImage(file: File): Promise<{ data: string; mediaType: string }> {
+  const { data: originalData, mediaType: originalMediaType } = await fileToBase64(file);
+
+  // Non-image files (shouldn't normally happen since input accepts images only)
+  // or very small files: send as-is.
+  if (!file.type.startsWith('image/')) {
+    return { data: originalData, mediaType: originalMediaType };
+  }
+
+  const img = await loadImage(`data:${originalMediaType};base64,${originalData}`);
+  const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { data: originalData, mediaType: originalMediaType };
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  let quality = 0.85;
+  let dataUrl = canvas.toDataURL('image/jpeg', quality);
+  let data = dataUrl.split(',')[1];
+
+  while (data.length > MAX_BASE64_BYTES && quality > 0.4) {
+    quality -= 0.15;
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+    data = dataUrl.split(',')[1];
+  }
+
+  return { data, mediaType: 'image/jpeg' };
+}
+
 export default function Home() {
   const [step, setStep] = useState<Step>('home');
   const [error, setError] = useState<string | null>(null);
@@ -47,18 +93,31 @@ export default function Home() {
 
   async function handleFile(file: File) {
     setError(null);
-    const { data, mediaType } = await fileToBase64(file);
-    setImagePreview(`data:${mediaType};base64,${data}`);
     setStep('loading');
     try {
+      const { data, mediaType } = await compressImage(file);
+      setImagePreview(`data:${mediaType};base64,${data}`);
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: data, mediaType })
       });
-      const json = await res.json();
+
+      const text = await res.text();
+      let json: any = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        // Server returned something that isn't JSON (e.g. a platform error page).
+        throw new Error(
+          res.status === 413
+            ? 'ဓာတ်ပုံ အရွယ်အစား ကြီးလွန်းနေပါတယ် — ဓာတ်ပုံအသေးလေးနဲ့ ထပ်စမ်းကြည့်ပါ။'
+            : 'Server ကနေ အဖြေ မှန်ကန်စွာ ပြန်မလာပါ — ခဏနေမှ ထပ်စမ်းကြည့်ပါ။'
+        );
+      }
+
       if (!res.ok) {
-        throw new Error(json.error || 'AI ခွဲခြမ်းစိတ်ဖြာမှု မအောင်မြင်ပါ။');
+        throw new Error(json?.error || 'AI ခွဲခြမ်းစိတ်ဖြာမှု မအောင်မြင်ပါ။');
       }
       await saveLesson(json.lesson);
       setLesson(json.lesson);
@@ -89,7 +148,6 @@ export default function Home() {
           ref={fileInputRef}
           type="file"
           accept="image/*"
-          capture="environment"
           hidden
           onChange={onFileChange}
         />
